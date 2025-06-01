@@ -1,0 +1,299 @@
+-- Load Fluent and Addons
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+-- Anti-Cheat Bypass (placed safely)
+task.spawn(function()
+    local success, err = pcall(function()
+        local mt = getrawmetatable(game)
+        if setreadonly then setreadonly(mt, false) end
+
+        local oldIndex = mt.__index
+        local oldNamecall = mt.__namecall
+
+        local spoofed = {
+            WalkSpeed = 16,
+            JumpPower = 50
+        }
+
+        mt.__index = newcclosure(function(self, key)
+            if self:IsA("Humanoid") and spoofed[key] then
+                return spoofed[key]
+            end
+            return oldIndex(self, key)
+        end)
+
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+
+            -- Block anti-cheat remotes
+            local name = tostring(self):lower()
+            if method == "FireServer" and (name:find("log") or name:find("tele") or name:find("anti")) then
+                return
+            end
+
+            return oldNamecall(self, unpack(args))
+        end)
+
+        local Players = game:GetService("Players")
+        local lp = Players.LocalPlayer
+        lp.CharacterAdded:Connect(function(char)
+            local hum = char:WaitForChild("Humanoid")
+            hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+                spoofed.WalkSpeed = hum.WalkSpeed
+            end)
+            hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
+                spoofed.JumpPower = hum.JumpPower
+            end)
+        end)
+    end)
+    if not success then
+        warn("[VEX OP] Bypass Error:", err)
+    end
+end)
+
+-- Create the main window
+local Window = Fluent:CreateWindow({
+    Title = "VEX OP",
+    SubTitle = "Tower of Hell",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Darker",
+    Transparency = false,
+    MinimizeKey = Enum.KeyCode.K
+})
+
+Window:Dialog({
+    Title = "WARNING",
+    Content = "Avoid Reports",
+    Buttons = {
+        { 
+            Title = "Okay",
+            Callback = function()
+                print("Join Discord for Updated Script")
+            end 
+        }
+    }
+})
+
+-- Create Tabs
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "flame" }),
+    Misc = Window:AddTab({ Title = "Misc", Icon = "wand" }),
+    Player = Window:AddTab({ Title = "Player", Icon = "user" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local Options = Fluent.Options
+
+-- Player setup
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Godmode implementation
+local killTags = {"kill", "laser", "death", "lava"}
+local godmodeOn = false
+local connections = {}
+
+local function isKillPart(part)
+    if part:IsA("BasePart") then
+        local name = part.Name:lower()
+        for _, tag in ipairs(killTags) do
+            if name:find(tag) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function applyGodmode(enabled)
+    for _, conn in ipairs(connections) do
+        pcall(function()
+            conn:Disconnect()
+        end)
+    end
+    connections = {}
+
+    if enabled then
+        -- Reset character/humanoid on respawn
+        player.CharacterAdded:Connect(function(char)
+            character = char
+            humanoid = char:WaitForChild("Humanoid")
+        end)
+
+        -- Health block
+        table.insert(connections, humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+            if humanoid.Health <= 0 then
+                humanoid.Health = 100
+            end
+        end))
+
+        for _, part in ipairs(workspace:GetDescendants()) do
+            if isKillPart(part) then
+                local conn = part.Touched:Connect(function(hit)
+                    if hit:IsDescendantOf(character) then
+                        humanoid.Health = humanoid.Health -- No-op
+                    end
+                end)
+                table.insert(connections, conn)
+
+                part.CanTouch = true
+                part.Transparency = 0
+                part.Material = Enum.Material.Neon
+            end
+        end
+    else
+        connections = {}
+    end
+end
+
+-- Godmode Toggle
+Tabs.Main:AddToggle("GodmodeAll", {
+    Title = "Godmode (SAFE)",
+    Default = false,
+    Callback = function(Value)
+        godmodeOn = Value
+        applyGodmode(Value)
+
+        Fluent:Notify({
+            Title = "Godmode",
+            Content = Value and "You are immune to all lasers!" or "Disabled",
+            Duration = 4
+        })
+    end
+})
+
+-- Teleport to Top (Auto Win) Button
+Tabs.Main:AddButton({
+    Title = "Teleport to Top",
+    Description = "Use after timer reaches 6:00",
+    Callback = function()
+        local character = player.Character or player.CharacterAdded:Wait()
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        local topPlatform, highestY = nil, 0
+
+        for _, part in ipairs(workspace:GetDescendants()) do
+            if part:IsA("BasePart") and part.Anchored and part.CanCollide then
+                local isFlat = part.Size.Y <= 4
+                local isWide = part.Size.X >= 8 and part.Size.Z >= 8
+                local isHighEnough = part.Position.Y > 100
+
+                if isFlat and isWide and isHighEnough and part.Position.Y > highestY then
+                    highestY = part.Position.Y
+                    topPlatform = part
+                end
+            end
+        end
+
+        if hrp and topPlatform then
+            local offset = topPlatform.CFrame.LookVector * -5 + topPlatform.CFrame.RightVector * 2 + Vector3.new(0, 2.5, 0)
+            hrp.CFrame = CFrame.new(topPlatform.Position + offset)
+
+            Fluent:Notify({
+                Title = "Teleport Successful",
+                Content = "Teleported to top platform!",
+                Duration = 4
+            })
+        else
+            Fluent:Notify({
+                Title = "Teleport Failed",
+                Content = "Could not find top platform.",
+                Duration = 4
+            })
+        end
+    end
+})
+
+-- WalkSpeed Slider
+Tabs.Player:AddSlider("WalkSpeed", {
+    Title = "WalkSpeed",
+    Description = "Adjust your character's walking speed.",
+    Default = 16,
+    Min = 16,
+    Max = 100,
+    Rounding = 1,
+    Callback = function(Value)
+        local char = player.Character or player.CharacterAdded:Wait()
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = Value
+            Fluent:Notify({
+                Title = "Speed Set",
+                Content = "WalkSpeed set to " .. Value,
+                Duration = 3
+            })
+        end
+    end
+})
+
+-- JumpPower Slider
+Tabs.Player:AddSlider("JumpPower", {
+    Title = "JumpPower",
+    Description = "Adjust your character's jump power.",
+    Default = 50,
+    Min = 50,
+    Max = 400,
+    Rounding = 5,
+    Callback = function(Value)
+        local char = player.Character or player.CharacterAdded:Wait()
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.JumpPower = Value
+            Fluent:Notify({
+                Title = "Jump Set",
+                Content = "JumpPower set to " .. Value,
+                Duration = 3
+            })
+        end
+    end
+})
+
+-- Discord Info Paragraph
+Tabs.Misc:AddParagraph({
+    Title = "SCRIPT UPDATES",
+    Content = "Join our Discord to get the latest version of VEX OP, report bugs, or request features!"
+})
+
+-- Join Discord Button
+Tabs.Misc:AddButton({
+    Title = "Join Discord (For more Game Scripts)",
+    Description = "Copies the Discord invite link to your clipboard.",
+    Callback = function()
+        setclipboard("https://discord.gg/bQufY3Pard")
+        Fluent:Notify({
+            Title = "Discord Invite",
+            Content = "Link copied! Paste into browser to join.",
+            Duration = 5
+        })
+    end
+})
+
+-- Setup SaveManager and InterfaceManager
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+
+InterfaceManager:SetFolder("VEX_OP_ToH")
+SaveManager:SetFolder("VEX_OP_ToH/Settings")
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "VEX OP",
+    Content = "The script has been loaded.",
+    Duration = 8
+})
+
+-- Load Autoload Config
+SaveManager:LoadAutoloadConfig()
