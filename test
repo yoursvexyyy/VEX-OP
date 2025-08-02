@@ -1,0 +1,819 @@
+CHECK
+-- ✅ VEX OP Hub X 99 Nights in the Forest (WindUI Version)
+
+-- Load WindUI
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+    Title = "VEX OP - 99 Nights in the Forest",
+    Icon = "rbxassetid://86958834463274",
+    Folder = "VEX OP",
+    Size = UDim2.fromOffset(580, 460),
+    Transparent = true,
+    Theme = "Dark",
+    SideBarWidth = 200,
+    Background = "rbxassetid://108597781932956",
+    BackgroundImageTransparency = 0.42,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+})
+
+local Tabs = {
+    Discord = Window:Tab({ Title = "Discord", Icon = "bell" }),
+    Main = Window:Tab({ Title = "Main", Icon = "swords" }),
+    ESP = Window:Tab({ Title = "ESP", Icon = "radar" }),
+    Auto = Window:Tab({ Title = "Auto", Icon = "cog" }),
+    Bring = Window:Tab({ Title = "Bring", Icon = "box" }),
+    Defense = Window:Tab({ Title = "Defense", Icon = "shield" }),
+    Visual = Window:Tab({ Title = "Visual", Icon = "eye" }),
+    Teleports = Window:Tab({ Title = "Teleports", Icon = "map" }),
+}
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+LocalPlayer.CharacterAdded:Connect(function(chr)
+    character = chr
+    humanoid = chr:WaitForChild("Humanoid")
+end)
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
+
+-- Kill Aura state
+local killAuraToggle = false
+local radius = 200
+
+-- Tool detection
+local toolsDamageIDs = {
+    ["Old Axe"] = "1_8982038982",
+    ["Good Axe"] = "112_8982038982",
+    ["Strong Axe"] = "116_8982038982",
+    ["Chainsaw"] = "647_8992824875",
+    ["Spear"] = "196_8999010016"
+}
+
+
+local function getAnyToolWithDamageID()
+    for toolName, damageID in pairs(toolsDamageIDs) do
+        local tool = LocalPlayer:FindFirstChild("Inventory") and LocalPlayer.Inventory:FindFirstChild(toolName)
+        if tool then
+            return tool, damageID
+        end
+    end
+    return nil, nil
+end
+
+local function equipTool(tool)
+    if tool then
+        RemoteEvents.EquipItemHandle:FireServer("FireAllClients", tool)
+    end
+end
+
+local function unequipTool(tool)
+    if tool then
+        RemoteEvents.UnequipItemHandle:FireServer("FireAllClients", tool)
+    end
+end
+
+local function killAuraLoop()
+    while killAuraToggle do
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local tool, damageID = getAnyToolWithDamageID()
+            if tool and damageID then
+                equipTool(tool)
+
+                for _, mob in ipairs(Workspace.Characters:GetChildren()) do
+                    if mob:IsA("Model") then
+                        local part = mob:FindFirstChildWhichIsA("BasePart")
+                        if part and (part.Position - hrp.Position).Magnitude <= radius then
+                            pcall(function()
+                                RemoteEvents.ToolDamageObject:InvokeServer(
+                                    mob,
+                                    tool,
+                                    damageID,
+                                    CFrame.new(part.Position)
+                                )
+                            end)
+                        end
+                    end
+                end
+                task.wait(0.1)
+            else
+                task.wait(1)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+local itemESPEnabled = false
+local itemESPConnections = {}
+
+local itemNamesForESP = {
+    ["Revolver"] = true, ["Oil Barrel"] = true, ["Chainsaw"] = true, ["Giant Sack"] = true,
+    ["Bunny Foot"] = true, ["MedKit"] = true, ["Alien Chest"] = true, ["Berry"] = true,
+    ["Bolt"] = true, ["Broken Fan"] = true, ["Carrot"] = true, ["Coal"] = true,
+    ["Coin Stack"] = true, ["Hologram Emitter"] = true, ["Item Chest"] = true,
+    ["Laser Fence Blueprint"] = true, ["Log"] = true, ["Old Flashlight"] = true,
+    ["Old Radio"] = true, ["Sheet Metal"] = true, ["Bandage"] = true, ["Rifle"] = true
+}
+
+local customFont = Font.new("rbxassetid://16658246179", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+
+local function createItemESP(model)
+    if not model:IsA("Model") or not itemNamesForESP[model.Name] then return end
+    if not model.PrimaryPart or model:FindFirstChild("ESP") then return end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP"
+    billboard.Size = UDim2.new(0, 100, 0, 30)
+    billboard.Adornee = model.PrimaryPart
+    billboard.AlwaysOnTop = true
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.TextSize = 17
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.5
+    label.TextScaled = false
+    label.FontFace = customFont
+    label.Text = model.Name
+    label.Parent = billboard
+
+    billboard.Parent = model
+end
+
+local function removeAllItemESP()
+    local itemFolder = workspace:FindFirstChild("Items")
+    if not itemFolder then return end
+    for _, model in itemFolder:GetChildren() do
+        local esp = model:FindFirstChild("ESP")
+        if esp then esp:Destroy() end
+    end
+end
+
+-- Discord Tab
+Tabs.Discord:Section({ Title = "Discord" })
+
+Tabs.Discord:Button({
+    Title = "Join Discord",
+    Description = "Discord link",
+    Callback = function()
+        setclipboard("https://discord.gg/FvMePtyJrq")
+        WindUI:Notify({ Title = "Discord", Content = "Copied Discord link!", Duration = 2 })
+    end
+})
+
+
+-- Main Tab
+Tabs.Main:Section({ Title = "Main" })
+
+-- Teleport to Bonfire at Night
+local bonfirePosition = Vector3.new(0.32, 6.15, -0.22)
+local teleportEnabled = false
+local teleportConnection = nil
+
+Tabs.Main:Toggle({
+    Title = "Automatically Teleport to Bonfire at Night",
+    Default = false,
+    Callback = function(value)
+        teleportEnabled = value
+
+        if teleportConnection then teleportConnection:Disconnect() end
+        teleportConnection = nil
+
+        if value then
+            teleportConnection = RunService.Heartbeat:Connect(function()
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    if Lighting.ClockTime >= 18 or Lighting.ClockTime <= 6 then
+                        local hrp = character.HumanoidRootPart
+                        hrp.CFrame = CFrame.new(bonfirePosition)
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                    end
+                end
+            end)
+        end
+    end
+})
+
+-- Infinite Jump
+local infiniteJump = false
+local jumpConnection = nil
+
+Tabs.Main:Toggle({
+    Title = "Infinite Jump",
+    Default = false,
+    Callback = function(value)
+        infiniteJump = value
+
+        if jumpConnection then jumpConnection:Disconnect() end
+        jumpConnection = nil
+
+        if value then
+            jumpConnection = UserInputService.JumpRequest:Connect(function()
+                if infiniteJump and humanoid and humanoid:GetState() ~= Enum.HumanoidStateType.Dead then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+        end
+    end
+})
+
+-- Speed Control
+local speedEnabled = false
+local currentSpeed = 16
+local speedConnection = nil
+
+Tabs.Main:Toggle({
+    Title = "Change Speed",
+    Default = false,
+    Callback = function(value)
+        speedEnabled = value
+
+        if speedConnection then speedConnection:Disconnect() end
+        speedConnection = nil
+
+        if value and humanoid then
+            humanoid.WalkSpeed = currentSpeed
+            speedConnection = RunService.Heartbeat:Connect(function()
+                if humanoid and speedEnabled then
+                    humanoid.WalkSpeed = currentSpeed
+                end
+            end)
+        elseif humanoid then
+            humanoid.WalkSpeed = 16
+        end
+    end
+})
+
+Tabs.Main:Slider({
+    Title = "Speed Value",
+    Step = 1,
+    Value = {
+        Min = 16,
+        Max = 1000,
+        Default = 16,
+    },
+    Callback = function(value)
+        currentSpeed = value
+        if speedEnabled and humanoid then
+            humanoid.WalkSpeed = value
+        end
+    end
+})
+
+
+-- No Clip
+local noclipEnabled = false
+local noclipConnection = nil
+
+local function noclipLoop()
+    if character then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end
+
+Tabs.Main:Toggle({
+    Title = "No Clip",
+    Default = false,
+    Callback = function(value)
+        noclipEnabled = value
+
+        if noclipConnection then noclipConnection:Disconnect() end
+        noclipConnection = nil
+
+        if value then
+            noclipConnection = RunService.Stepped:Connect(noclipLoop)
+        end
+    end
+})
+
+-- No Fall Damage
+Tabs.Main:Toggle({
+    Title = "No Fall Damage",
+    Default = false,
+    Callback = function(value)
+        if value then
+            humanoid.StateChanged:Connect(function(_, newState)
+                if newState == Enum.HumanoidStateType.FallingDown or newState == Enum.HumanoidStateType.PlatformStanding then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Main:Toggle({
+    Title = "Kill Aura",
+    Default = false,
+    Callback = function(value)
+        killAuraToggle = value
+        if value then
+            task.spawn(killAuraLoop)
+        else
+            local tool, _ = getAnyToolWithDamageID()
+            unequipTool(tool)
+        end
+    end
+})
+
+Tabs.Main:Slider({
+    Title = "Kill Aura Radius",
+    Step = 5,
+    Value = {
+        Min = 20,
+        Max = 500,
+        Default = 200,
+    },
+    Callback = function(value)
+        radius = math.clamp(value, 20, 500)
+    end
+})
+
+Tabs.ESP:Section({ Title = "Item ESP" })
+
+Tabs.ESP:Toggle({
+    Title = "Item ESP",
+    Default = false,
+    Callback = function(state)
+        itemESPEnabled = state
+
+        local itemFolder = workspace:FindFirstChild("Items")
+        if not itemFolder then
+            warn("workspace.Items folder not found")
+            return
+        end
+
+        -- Cleanup previous
+        removeAllItemESP()
+        for _, conn in ipairs(itemESPConnections) do
+            if conn.Disconnect then conn:Disconnect() end
+        end
+        table.clear(itemESPConnections)
+
+        if state then
+            -- Add to all existing
+            for _, model in itemFolder:GetChildren() do
+                createItemESP(model)
+            end
+
+            -- Add on new
+            local conn = itemFolder.ChildAdded:Connect(function(model)
+                model:GetPropertyChangedSignal("PrimaryPart"):Wait()
+                createItemESP(model)
+            end)
+            table.insert(itemESPConnections, conn)
+        end
+    end
+})
+
+Tabs.Auto:Section({ Title = "Automation" })
+
+-- === POSITION TARGETS ===
+local campfireDropPos = Vector3.new(0, 19, 0)
+local machineDropPos = Vector3.new(21, 16, -5)
+
+-- === ITEM CATEGORIES ===
+local campfireFuelItems = {"Log", "Coal", "Fuel Canister", "Oil Barrel", "Biofuel"}
+local autocookItems = {"Morsel", "Steak"}
+local autoGrindItems = {"UFO Junk", "UFO Component", "Old Car Engine", "Broken Fan", "Old Microwave", "Bolt", "Log", "Cultist Gem", "Sheet Metal", "Old Radio","Tyre","Washing Machine", "Cultist Experiment", "Cultist Component", "Gem of the Forest Fragment", "Broken Microwave"}
+local autoEatFoods = {"Cooked Steak", "Cooked Morsel", "Berry", "Carrot", "Apple"}
+local biofuelItems = {"Carrot", "Cooked Morsel", "Morsel", "Steak", "Cooked Steak", "Log"}
+
+-- === TOGGLE TABLES ===
+local autoFuelEnabledItems = {}
+local alwaysFeedEnabledItems = {}
+local autoCookEnabledItems = {}
+local autoGrindEnabledItems = {}
+local autoBiofuelEnabledItems = {}
+local autoEatEnabled = false
+local autoEatHPEnabled = false
+
+local function createDropdownWithCheckboxes(title, itemList, enabledTable)
+    local dropdown = Tabs.Auto:CreateDropDown(title)
+    for _, itemName in ipairs(itemList) do
+        dropdown:AddCheckbox(itemName, function(checked)
+            enabledTable[itemName] = checked
+        end)
+    end
+    dropdown:AddCheckbox("Bulk (All)", function(checked)
+        for _, itemName in ipairs(itemList) do
+            enabledTable[itemName] = checked
+        end
+    end)
+end
+
+createDropdownWithCheckboxes("Auto Feed Campfire (ignores HP)", campfireFuelItems, alwaysFeedEnabledItems)
+createDropdownWithCheckboxes("Auto Feed Campfire (HP Based)", campfireFuelItems, autoFuelEnabledItems)
+createDropdownWithCheckboxes("Auto Cook Food", autocookItems, autoCookEnabledItems)
+createDropdownWithCheckboxes("Auto Machine Grind", autoGrindItems, autoGrindEnabledItems)
+createDropdownWithCheckboxes("Auto Biofuel Processor", biofuelItems, autoBiofuelEnabledItems)
+
+local eatDropdown = Tabs.Auto:CreateDropDown("Auto Eat (3 sec interval)")
+eatDropdown:AddCheckbox("Enable Auto Eat", function(checked)
+    autoEatEnabled = checked
+end)
+
+local eatHPDropdown = Tabs.Auto:CreateDropDown("Auto Eat (HP Bar Based)")
+eatHPDropdown:AddCheckbox("Enable Auto Eat (HP Bar Based)", function(checked)
+    autoEatHPEnabled = checked
+end)
+
+local function moveItemToPos(item, position)
+    if not item or not item:IsDescendantOf(workspace) then return end
+    local part = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart") or item:FindFirstChild("Handle")
+    if not part then return end
+
+    if not item.PrimaryPart then
+        pcall(function() item.PrimaryPart = part end)
+    end
+
+    pcall(function()
+        RemoteEvents.RequestStartDraggingItem:FireServer(item)
+        task.wait(0.05)
+        item:SetPrimaryPartCFrame(CFrame.new(position))
+        task.wait(0.05)
+        RemoteEvents.StopDraggingItem:FireServer(item)
+    end)
+end
+
+local itemsFolder = workspace:WaitForChild("Items")
+local remoteConsume = RemoteEvents:WaitForChild("RequestConsumeItem")
+
+-- Always feed fire
+coroutine.wrap(function()
+    while true do
+        for itemName, enabled in pairs(alwaysFeedEnabledItems) do
+            if enabled then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then
+                        moveItemToPos(item, campfireDropPos)
+                    end
+                end
+            end
+        end
+        task.wait(2)
+    end
+end)()
+
+-- HP-based campfire feed
+coroutine.wrap(function()
+    local campfire = workspace.Map.Campground.MainFire
+    local fillFrame = campfire.Center.BillboardGui.Frame.Background.Fill
+    while true do
+        local healthPercent = fillFrame.Size.X.Scale
+        if healthPercent < 0.7 then
+            repeat
+                for itemName, enabled in pairs(autoFuelEnabledItems) do
+                    if enabled then
+                        for _, item in ipairs(itemsFolder:GetChildren()) do
+                            if item.Name == itemName then
+                                moveItemToPos(item, campfireDropPos)
+                            end
+                        end
+                    end
+                end
+                task.wait(0.5)
+                healthPercent = fillFrame.Size.X.Scale
+            until healthPercent >= 1
+        end
+        task.wait(2)
+    end
+end)()
+
+-- Auto Cook
+coroutine.wrap(function()
+    while true do
+        for itemName, enabled in pairs(autoCookEnabledItems) do
+            if enabled then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then
+                        moveItemToPos(item, campfireDropPos)
+                    end
+                end
+            end
+        end
+        task.wait(2.5)
+    end
+end)()
+
+-- Auto Grind
+coroutine.wrap(function()
+    while true do
+        for itemName, enabled in pairs(autoGrindEnabledItems) do
+            if enabled then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then
+                        moveItemToPos(item, machineDropPos)
+                    end
+                end
+            end
+        end
+        task.wait(2.5)
+    end
+end)()
+
+-- Auto Eat (interval)
+coroutine.wrap(function()
+    while true do
+        if autoEatEnabled then
+            local available = {}
+            for _, item in ipairs(itemsFolder:GetChildren()) do
+                if table.find(autoEatFoods, item.Name) then
+                    table.insert(available, item)
+                end
+            end
+            if #available > 0 then
+                local food = available[math.random(1, #available)]
+                pcall(function() remoteConsume:InvokeServer(food) end)
+            end
+        end
+        task.wait(3)
+    end
+end)()
+
+-- Auto Eat (HP Bar)
+local hungerBar = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Interface"):WaitForChild("StatBars"):WaitForChild("HungerBar"):WaitForChild("Bar")
+
+coroutine.wrap(function()
+    while true do
+        if autoEatHPEnabled and hungerBar.Size.X.Scale <= 0.5 then
+            repeat
+                local currentHunger = hungerBar.Size.X.Scale
+                local available = {}
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if table.find(autoEatFoods, item.Name) then
+                        table.insert(available, item)
+                    end
+                end
+                if #available > 0 then
+                    local food = available[math.random(1, #available)]
+                    pcall(function() remoteConsume:InvokeServer(food) end)
+                else
+                    break
+                end
+                task.wait(1)
+            until hungerBar.Size.X.Scale >= 0.99 or not autoEatHPEnabled
+        end
+        task.wait(3)
+    end
+end)()
+
+-- Auto Biofuel
+coroutine.wrap(function()
+    local biofuelProcessorPos
+    while true do
+        if not biofuelProcessorPos then
+            local processor = workspace.Structures:FindFirstChild("Biofuel Processor")
+            if processor then
+                local part = processor:FindFirstChild("Part")
+                if part then
+                    biofuelProcessorPos = part.Position + Vector3.new(0, 5, 0)
+                end
+            end
+        end
+
+        if biofuelProcessorPos then
+            for itemName, enabled in pairs(autoBiofuelEnabledItems) do
+                if enabled then
+                    for _, item in ipairs(itemsFolder:GetChildren()) do
+                        if item.Name == itemName then
+                            moveItemToPos(item, biofuelProcessorPos)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(2)
+    end
+end)()
+
+-- Bring Tab
+Tabs.Bring:Section({ Title = "Bring Items" })
+
+local function bringItems(itemName, offsetY)
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local offset = 0
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if item:IsA("Model") and item.Name == itemName then
+            local part = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
+            if part then
+                item:SetPrimaryPartCFrame(root.CFrame * CFrame.new(offset, offsetY or 2, 0))
+                offset = offset + 2
+                task.wait(0.1)
+            end
+        end
+    end
+end
+
+Tabs.Bring:Button({
+    Title = "Bring Logs",
+    Callback = function()
+        bringItems("Log")
+    end
+})
+
+Tabs.Bring:Button({
+    Title = "Bring Coals",
+    Callback = function()
+        bringItems("Coal")
+    end
+})
+
+Tabs.Bring:Button({
+    Title = "Bring Fuel",
+    Callback = function()
+        bringItems("Fuel Canister")
+    end
+})
+
+-- Defense Tab
+Tabs.Defense:Section({ Title = "Defense" })
+
+local godModeEnabled = false
+
+Tabs.Defense:Toggle({
+    Title = "God Mode",
+    Default = false,
+    Callback = function(value)
+        godModeEnabled = value
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:SetAttribute("GodMode", value)
+            end
+        end
+    end
+})
+
+local noAggroEnabled = false
+local noAggroConnection = nil
+
+Tabs.Defense:Toggle({
+    Title = "No Animal Aggression",
+    Default = false,
+    Callback = function(value)
+        noAggroEnabled = value
+
+        if noAggroConnection then noAggroConnection:Disconnect() end
+        noAggroConnection = nil
+
+        if value then
+            noAggroConnection = RunService.Heartbeat:Connect(function()
+                if character then
+                    for _, npc in ipairs(workspace:GetDescendants()) do
+                        if npc:IsA("Model") and (npc.Name:find("Wolf") or npc.Name:find("Bunny")) then
+                            local humanoid = npc:FindFirstChildOfClass("Humanoid")
+                            if humanoid then
+                                humanoid:SetAttribute("IgnorePlayer", true)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
+
+-- Visual Tab
+Tabs.Visual:Section({ Title = "Visual" })
+
+local brightnessEnabled = false
+local originalBrightness = Lighting.Brightness
+
+Tabs.Visual:Toggle({
+    Title = "Brightness Boost",
+    Default = false,
+    Callback = function(value)
+        brightnessEnabled = value
+        if value then
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 12
+        else
+            Lighting.Brightness = originalBrightness
+        end
+    end
+})
+
+Tabs.Visual:Toggle({
+    Title = "Fullbright",
+    Default = false,
+    Callback = function(value)
+        if value then
+            Lighting.Ambient = Color3.new(1, 1, 1)
+            Lighting.GlobalShadows = false
+        else
+            Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+            Lighting.GlobalShadows = true
+        end
+    end
+})
+
+local fovEnabled = false
+local currentFOV = 70
+local fovConnection = nil
+
+Tabs.Visual:Toggle({
+    Title = "FOV Changer",
+    Default = false,
+    Callback = function(value)
+        fovEnabled = value
+
+        if fovConnection then fovConnection:Disconnect() end
+        fovConnection = nil
+
+        if value then
+            fovConnection = RunService.RenderStepped:Connect(function()
+                if workspace.CurrentCamera then
+                    workspace.CurrentCamera.FieldOfView = currentFOV
+                end
+            end)
+        elseif workspace.CurrentCamera then
+            workspace.CurrentCamera.FieldOfView = 70
+        end
+    end
+})
+
+Tabs.Visual:Slider({
+    Title = "FOV Value",
+    Step = 1,
+    Value = {
+        Min = 70,
+        Max = 120,
+        Default = 70,
+    },
+    Callback = function(value)
+        currentFOV = value
+        if fovEnabled and workspace.CurrentCamera then
+            workspace.CurrentCamera.FieldOfView = value
+        end
+    end
+})
+
+
+-- Teleports Tab
+Tabs.Teleports:Section({ Title = "Teleports" })
+
+local waypoints = {
+    ["Bonfire"] = CFrame.new(0.32, 6.15, -0.22),
+    ["Cabin"] = CFrame.new(-100, 5, 50),
+    ["River"] = CFrame.new(150, 3, -200),
+}
+
+for name, cf in pairs(waypoints) do
+    Tabs.Teleports:Button({
+        Title = "Teleport to " .. name,
+        Callback = function()
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                character.HumanoidRootPart.CFrame = cf
+            end
+        end
+    })
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then
+        if teleportConnection then teleportConnection:Disconnect() end
+        if jumpConnection then jumpConnection:Disconnect() end
+        if speedConnection then speedConnection:Disconnect() end
+        if noclipConnection then noclipConnection:Disconnect() end
+        if noAggroConnection then noAggroConnection:Disconnect() end
+        if fovConnection then fovConnection:Disconnect() end
+
+        Lighting.Brightness = originalBrightness
+        Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+        Lighting.GlobalShadows = true
+
+        if workspace.CurrentCamera then
+            workspace.CurrentCamera.FieldOfView = 70
+        end
+
+        if humanoid then
+            humanoid.WalkSpeed = 16
+        end
+    end
+end)
+
+Window:SelectTab(1)
+WindUI:Notify({ Title = "VEX OP", Content = "Loaded Successfully!", Icon = "rbxassetid://82233980503615", Duration = 3, Icon = "bell" })
