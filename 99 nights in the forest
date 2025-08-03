@@ -22,7 +22,6 @@ local Tabs = {
     Main = Window:Tab({ Title = "Main", Icon = "swords" }),
     ESP = Window:Tab({ Title = "ESP", Icon = "radar" }),
     Bring = Window:Tab({ Title = "Bring", Icon = "box" }),
-    Defense = Window:Tab({ Title = "Defense", Icon = "shield" }),
     Visual = Window:Tab({ Title = "Visual", Icon = "eye" }),
     Teleports = Window:Tab({ Title = "Teleports", Icon = "map" }),
     Auto = Window:Tab({ Title = "Auto", Icon = "cog" }),
@@ -451,51 +450,10 @@ Tabs.Bring:Button({
     end
 })
 
--- Defense Tab
-Tabs.Defense:Section({ Title = "Defense" })
-
-local godModeEnabled = false
-
-Tabs.Defense:Toggle({
-    Title = "God Mode",
-    Default = false,
-    Callback = function(value)
-        godModeEnabled = value
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid:SetAttribute("GodMode", value)
-            end
-        end
-    end
-})
-
-local noAggroEnabled = false
-local noAggroConnection = nil
-
-Tabs.Defense:Toggle({
-    Title = "No Animal Aggression",
-    Default = false,
-    Callback = function(value)
-        noAggroEnabled = value
-
-        if noAggroConnection then noAggroConnection:Disconnect() end
-        noAggroConnection = nil
-
-        if value then
-            noAggroConnection = RunService.Heartbeat:Connect(function()
-                if character then
-                    for _, npc in ipairs(workspace:GetDescendants()) do
-                        if npc:IsA("Model") and (npc.Name:find("Wolf") or npc.Name:find("Bunny")) then
-                            local humanoid = npc:FindFirstChildOfClass("Humanoid")
-                            if humanoid then
-                                humanoid:SetAttribute("IgnorePlayer", true)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
+Tabs.Bring:Button({
+    Title = "Bring Fuel",
+    Callback = function()
+        bringItems("Sheet Metal")
     end
 })
 
